@@ -11,19 +11,16 @@ import (
 )
 
 const chunkSize = 1024 * 1024 * 5 // 5MB
-
-func main() {
-	fileURL := "https://filesamples.com/samples/video/mp4/sample_1280x720_surfing_with_audio.mp4"
-	downloadFile(fileURL)
-}
-
 type chunk struct {
 	id    int
 	start int64
 	end   int64
 }
 
-func downloadFile(url string) {
+func main() {
+	fileURL := "https://filesamples.com/samples/video/mp4/sample_1280x720_surfing_with_audio.mp4"
+	url := fileURL
+
 	log.Printf("Downloading file from: %s\n", url)
 
 	resp, err := http.Get(url)
@@ -33,13 +30,6 @@ func downloadFile(url string) {
 	}
 	defer resp.Body.Close()
 
-	fileSize := resp.ContentLength
-	log.Printf("File size: %d bytes\n", fileSize)
-
-	if fileSize == -1 {
-		log.Println("File size unknown. Downloading in chunks with parallelism...")
-	}
-
 	fileName := filepath.Base(url)
 	out, err := os.Create(fileName)
 	if err != nil {
@@ -48,7 +38,23 @@ func downloadFile(url string) {
 	}
 	defer out.Close()
 
-	log.Println("Starting download...")
+	fileSize := resp.ContentLength
+	log.Printf("File size: %d bytes\n", fileSize)
+
+	supportsRange := resp.Header.Get("Accept-Ranges") == "bytes"
+
+	if fileSize == -1 || !supportsRange {
+		log.Println("File size unknown. Downloading without parallelism...")
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			log.Fatalf("Error while downloading the file: %v\n", err)
+			return
+		}
+		log.Println("Download completed!")
+		return
+	}
+
+	log.Println("Starting parallel download...")
 
 	var wg sync.WaitGroup
 	chunkTasks := make(chan chunk) // Channel to send chunk tasks to workers
