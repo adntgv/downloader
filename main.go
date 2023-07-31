@@ -19,6 +19,10 @@ type chunk struct {
 
 func main() {
 	fileURL := "https://filesamples.com/samples/video/mp4/sample_1280x720_surfing_with_audio.mp4"
+	download(fileURL)
+}
+
+func download(fileURL string) {
 	url := fileURL
 
 	log.Printf("Downloading file from: %s\n", url)
@@ -56,6 +60,10 @@ func main() {
 
 	log.Println("Starting parallel download...")
 
+	downloadInParallel(out, url, fileSize)
+}
+
+func downloadInParallel(out *os.File, url string, fileSize int64) {
 	var wg sync.WaitGroup
 	chunkTasks := make(chan chunk) // Channel to send chunk tasks to workers
 	done := make(chan struct{})    // Channel to notify workers to stop
