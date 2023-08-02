@@ -52,19 +52,19 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 	var d downloader.Downloader
 	if fileSize == -1 || !supportsRange {
 		log.Println("File size unknown. Downloading with alternative parallelism...")
-		d = &downloader.AlternativeDownloader{
-			ChunkSize:  chunkSize,
-			NumWorkers: numWorkers,
-			Chunker:    chunker,
-		}
+		d = downloader.NewAlternativeDownloader(
+			chunkSize,
+			numWorkers,
+			chunker,
+		)
 	} else {
 		log.Println("File size known. Downloading with chunk parallelism...")
-		d = &downloader.ParallelDownloader{
-			ChunkSize:  chunkSize,
-			NumWorkers: numWorkers,
-			FileSize:   fileSize,
-			Chunker:    chunker,
-		}
+		d = downloader.NewParallelDownloader(
+			chunkSize,
+			numWorkers,
+			fileSize,
+			chunker,
+		)
 	}
 
 	return d

@@ -16,6 +16,19 @@ type ParallelDownloader struct {
 	Chunker    chunker.Chunker
 }
 
+func NewParallelDownloader(
+	chunkSize int,
+	numWorkers int,
+	fileSize int64,
+	chunker chunker.Chunker) Downloader {
+	return &ParallelDownloader{
+		ChunkSize:  chunkSize,
+		NumWorkers: numWorkers,
+		FileSize:   fileSize,
+		Chunker:    chunker,
+	}
+}
+
 type chunk struct {
 	id    int
 	start int64
@@ -98,9 +111,7 @@ func (d *ParallelDownloader) downloadAndSave(workerId int, chunk chunk, url stri
 		log.Fatalf("Error reading chunk %d: %v\n", chunk.id, err)
 	}
 
-	c := chunker.NewChunk(chunk.id, bz)
-
-	err = d.Chunker.Handle(c)
+	err = d.Chunker.Handle(chunk.id, bz)
 	if err != nil {
 		log.Fatalf("Error saving chunk %d to file: %v\n", chunk.id, err)
 	}

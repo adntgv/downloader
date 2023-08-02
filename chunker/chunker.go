@@ -7,20 +7,8 @@ import (
 	"os"
 )
 
-type Chunk struct {
-	Index int
-	Data  []byte
-}
-
-func NewChunk(index int, data []byte) *Chunk {
-	return &Chunk{
-		Index: index,
-		Data:  data,
-	}
-}
-
 type Chunker interface {
-	Handle(chunk *Chunk) error
+	Handle(id int, bz []byte) error
 	AssembleChunks(filename string) error
 }
 
@@ -28,18 +16,24 @@ type DefaultChunker struct {
 	ChunkPrefix string
 }
 
-func (c *DefaultChunker) Handle(chunk *Chunk) error {
-	filename := fmt.Sprintf("%s%d", c.ChunkPrefix, chunk.Index)
-	err := saveBytesToFile(filename, chunk.Data)
+func NewChunker(
+	chunkPrefix string) Chunker {
+	return &DefaultChunker{
+		ChunkPrefix: chunkPrefix,
+	}
+}
+
+func (c *DefaultChunker) Handle(id int, bz []byte) error {
+	filename := fmt.Sprintf("%s%d", c.ChunkPrefix, id)
+	err := c.saveBytesToFile(filename, bz)
 	if err != nil {
-		return fmt.Errorf("error saving chunk %d to file: %v", chunk.Index, err)
+		return fmt.Errorf("error saving chunk %d to file: %v", id, err)
 	}
 
 	return nil
 }
 
 func (c *DefaultChunker) AssembleChunks(filename string) error {
-
 	out, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %v", filename, err)
@@ -73,14 +67,7 @@ func (c *DefaultChunker) AssembleChunks(filename string) error {
 	return nil
 }
 
-func NewChunker(
-	chunkPrefix string) Chunker {
-	return &DefaultChunker{
-		ChunkPrefix: chunkPrefix,
-	}
-}
-
-func saveBytesToFile(filename string, bz []byte) error {
+func (c *DefaultChunker) saveBytesToFile(filename string, bz []byte) error {
 	out, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %v", filename, err)
