@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/adntgv/downloader/downloader"
 )
 
 func main() {
@@ -46,24 +48,24 @@ func download(fileURL string, chunkSize int, numWorkers int, chunkPrefix string)
 	return downloader.Download(url, chunkPrefix)
 }
 
-func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool) Downloader {
-	var downloader Downloader
+func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool) downloader.Downloader {
+	var d downloader.Downloader
 	if fileSize == -1 || !supportsRange {
 		log.Println("File size unknown. Downloading with alternative parallelism...")
-		downloader = &AlternativeDownloader{
+		d = &downloader.AlternativeDownloader{
 			ChunkSize:  chunkSize,
 			NumWorkers: numWorkers,
 		}
 	} else {
 		log.Println("File size known. Downloading with chunk parallelism...")
-		downloader = &ParallelDownloader{
+		d = &downloader.ParallelDownloader{
 			ChunkSize:  chunkSize,
 			NumWorkers: numWorkers,
 			FileSize:   fileSize,
 		}
 	}
 
-	return downloader
+	return d
 }
 
 func assembleChunks(filename string, chunkPrefix string) error {
