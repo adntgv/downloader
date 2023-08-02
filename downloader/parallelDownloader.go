@@ -1,13 +1,20 @@
 package downloader
 
 import (
+	"chunker"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 )
+
+type ParallelDownloader struct {
+	ChunkSize  int
+	NumWorkers int
+	FileSize   int64
+	Chunker    chunker.Chunker
+}
 
 type chunk struct {
 	id    int
@@ -15,29 +22,23 @@ type chunk struct {
 	end   int64
 }
 
-type ParallelDownloader struct {
-	ChunkSize  int
-	NumWorkers int
-	FileSize   int64
-}
-
-func (d *ParallelDownloader) Download(url string, chunkPrefix string) error {
+func (d *ParallelDownloader) Download(url string) error {
 	var wg sync.WaitGroup
-	chunkTasks := make(chan chunk) // Channel to send chunk tasks to workers
-	done := make(chan struct{})    // Channel to notify workers to stop
+	done := make(chan struct{}) // Channel to notify workers to stop
+
+	// Create channel to send chunk tasks to workers
+	chunkTasks := make(chan chunk)
 
 	// Determine the number of worker goroutines (adjust as needed)
 	numWorkers := 5
 
 	// Launch worker goroutines
 	for i := 0; i < numWorkers; i++ {
-		go chunkDownloader(i, chunkTasks, url, &wg, done)
+		go d.chunkDownloader(i, chunkTasks, url, &wg, done)
 	}
 
 	// Generate chunk tasks
-	generateChunkTasks(d.FileSize, chunkTasks, d.ChunkSize)
-
-	close(chunkTasks)
+	d.generateChunkTasks(d.FileSize, chunkTasks, d.ChunkSize)
 
 	wg.Wait()
 
@@ -47,7 +48,7 @@ func (d *ParallelDownloader) Download(url string, chunkPrefix string) error {
 	return nil
 }
 
-func generateChunkTasks(fileSize int64, chunkTasks chan<- chunk, chunkSize int) int {
+func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<- chunk, chunkSize int) int {
 	offset := int64(0)
 	chunkId := 0
 
@@ -68,7 +69,7 @@ func generateChunkTasks(fileSize int64, chunkTasks chan<- chunk, chunkSize int) 
 	return chunkId
 }
 
-func chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync.WaitGroup, done <-chan struct{}) {
+func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync.WaitGroup, done <-chan struct{}) {
 	wg.Add(1)
 	defer wg.Done()
 
@@ -78,27 +79,34 @@ func chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync
 			if !ok {
 				return // No more tasks, worker can exit
 			}
-			downloadAndSave(workerId, chunk, url)
+			d.downloadAndSave(workerId, chunk, url)
 		case <-done:
 			return // Exit worker goroutine when done channel is closed
 		}
 	}
 }
 
-func downloadAndSave(workerId int, chunk chunk, url string) {
-	resp, err := downloadChunk(url, chunk.start, chunk.end)
+func (d *ParallelDownloader) downloadAndSave(workerId int, chunk chunk, url string) {
+	resp, err := d.downloadChunk(url, chunk.start, chunk.end)
 	if err != nil {
 		log.Fatalf("Error downloading chunk at offset %d: %v\n", chunk.start, err)
 	}
 	defer resp.Body.Close()
 
-	err = saveByteStreamToFile(fmt.Sprintf("chunk-%d", chunk.id), resp.Body)
+	bz, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error reading chunk %d: %v\n", chunk.id, err)
+	}
+
+	c := chunker.NewChunk(chunk.id, bz)
+
+	err = d.Chunker.Handle(c)
 	if err != nil {
 		log.Fatalf("Error saving chunk %d to file: %v\n", chunk.id, err)
 	}
 }
 
-func downloadChunk(url string, start, end int64) (*http.Response, error) {
+func (d *ParallelDownloader) downloadChunk(url string, start, end int64) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -108,19 +116,4 @@ func downloadChunk(url string, start, end int64) (*http.Response, error) {
 	req.Header.Add("Range", rangeHeader)
 
 	return http.DefaultClient.Do(req)
-}
-
-func saveByteStreamToFile(filename string, in io.Reader) error {
-	out, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file %s: %v", filename, err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return fmt.Errorf("error writing to file %s: %v", filename, err)
-	}
-
-	return nil
 }

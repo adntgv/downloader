@@ -1,20 +1,21 @@
 package downloader
 
 import (
+	"chunker"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 )
 
 type AlternativeDownloader struct {
 	ChunkSize  int
 	NumWorkers int
+	Chunker    chunker.Chunker
 }
 
-func (d *AlternativeDownloader) Download(url string, chunkPrefix string) error {
+func (d *AlternativeDownloader) Download(url string) error {
 	sharedChunkId := 0
 	readerLock := sync.Mutex{}
 
@@ -57,15 +58,12 @@ func (d *AlternativeDownloader) Download(url string, chunkPrefix string) error {
 					chunk = chunk[:n]
 				}
 
-				chunkFileName := fmt.Sprintf("chunk-%d", chunkId)
-				out, err := os.Create(chunkFileName)
-				if err != nil {
-					log.Fatalf("Error creating chunk file %s: %v\n", chunkFileName, err)
-				}
+				c := chunker.NewChunk(chunkId, chunk)
 
-				_, err = out.Write(chunk[:n])
+				err = d.Chunker.Handle(c)
 				if err != nil {
-					log.Fatalf("Error writing chunk %d to file: %v\n", chunkId, err)
+					log.Fatalf("Error saving chunk %d to file: %v\n", chunkId, err)
+					return
 				}
 			}
 		}()

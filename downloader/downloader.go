@@ -1,5 +1,5 @@
 package downloader
 
 type Downloader interface {
-	Download(url string, chunkPrefix string) error
+	Download(url string) error
 }

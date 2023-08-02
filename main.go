@@ -1,14 +1,12 @@
 package main
 
 import (
+	"chunker"
+	"downloader"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
-
-	"github.com/adntgv/downloader/downloader"
 )
 
 func main() {
@@ -18,19 +16,21 @@ func main() {
 	chunkPrefix := "chunk-"
 	fileName := filepath.Base(fileURL)
 
-	if err := download(fileURL, chunkSize, numWorkers, chunkPrefix); err != nil {
+	chunker := chunker.NewChunker(chunkPrefix)
+
+	if err := download(fileURL, chunkSize, numWorkers, chunker); err != nil {
 		log.Fatalf("Error downloading file: %v\n", err)
 	}
 
 	log.Println("Download completed")
 
-	err := assembleChunks(fileName, chunkPrefix)
+	err := chunker.AssembleChunks(fileName)
 	if err != nil {
 		log.Fatalf("Error assembling chunks: %v\n", err)
 	}
 }
 
-func download(fileURL string, chunkSize int, numWorkers int, chunkPrefix string) error {
+func download(fileURL string, chunkSize int, numWorkers int, chunker chunker.Chunker) error {
 	url := fileURL
 
 	log.Printf("Downloading file from: %s\n", url)
@@ -43,18 +43,19 @@ func download(fileURL string, chunkSize int, numWorkers int, chunkPrefix string)
 
 	supportsRange := resp.Header.Get("Accept-Ranges") == "bytes"
 
-	downloader := newDownloader(chunkSize, numWorkers, resp.ContentLength, supportsRange)
+	downloader := newDownloader(chunkSize, numWorkers, resp.ContentLength, supportsRange, chunker)
 
-	return downloader.Download(url, chunkPrefix)
+	return downloader.Download(url)
 }
 
-func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool) downloader.Downloader {
+func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool, chunker chunker.Chunker) downloader.Downloader {
 	var d downloader.Downloader
 	if fileSize == -1 || !supportsRange {
 		log.Println("File size unknown. Downloading with alternative parallelism...")
 		d = &downloader.AlternativeDownloader{
 			ChunkSize:  chunkSize,
 			NumWorkers: numWorkers,
+			Chunker:    chunker,
 		}
 	} else {
 		log.Println("File size known. Downloading with chunk parallelism...")
@@ -62,42 +63,9 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 			ChunkSize:  chunkSize,
 			NumWorkers: numWorkers,
 			FileSize:   fileSize,
+			Chunker:    chunker,
 		}
 	}
 
 	return d
-}
-
-func assembleChunks(filename string, chunkPrefix string) error {
-	out, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("error creating file %s: %v", filename, err)
-	}
-	defer out.Close()
-
-	for i := 0; ; i++ {
-		chunkFilename := fmt.Sprintf("%s%d", chunkPrefix, i)
-		if _, err := os.Stat(chunkFilename); os.IsNotExist(err) {
-			break
-		}
-
-		in, err := os.Open(chunkFilename)
-		if err != nil {
-			return fmt.Errorf("error opening chunk file %s: %v", chunkFilename, err)
-		}
-
-		_, err = io.Copy(out, in)
-		if err != nil {
-			return fmt.Errorf("error copying chunk file %s to output: %v", chunkFilename, err)
-		}
-
-		in.Close()
-
-		err = os.Remove(chunkFilename)
-		if err != nil {
-			return fmt.Errorf("error removing chunk file %s: %v", chunkFilename, err)
-		}
-	}
-
-	return nil
 }
