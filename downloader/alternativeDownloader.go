@@ -53,6 +53,7 @@ func (d *AlternativeDownloader) processChunks(resp *http.Response, wg *sync.Wait
 		readerLock.Lock()
 		chunk := make([]byte, chunkSize)
 		n, err := resp.Body.Read(chunk)
+		log.Printf("Read %d bytes, size %d\n", n, chunkSize)
 		chunkId := *sharedChunkId
 		*sharedChunkId++
 		readerLock.Unlock()
