@@ -3,18 +3,28 @@ package main
 import (
 	"chunker"
 	"downloader"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"path/filepath"
+)
+
+var (
+	fileURLFlag     = flag.String("url", "https://filesamples.com/samples/video/mp4/sample_1280x720_surfing_with_audio.mp4", "URL of the file to download")
+	chunkSizeFlag   = flag.Int("chunkSize", 1024*1024*10, "Size of each chunk in bytes")
+	numWorkersFlag  = flag.Int("numWorkers", 5, "Number of workers to use")
+	chunkPrefixFlag = flag.String("chunkPrefix", "chunk-", "Prefix of the chunk files")
+	fileNameFlag    = flag.String("fileName", "sample_1280x720_surfing_with_audio.mp4", "Name of the file to download")
 )
 
 func main() {
-	fileURL := "https://filesamples.com/samples/video/mp4/sample_1280x720_surfing_with_audio.mp4"
-	chunkSize := 1024 * 1024 * 10 // 10MB
-	numWorkers := 5
-	chunkPrefix := "chunk-"
-	fileName := filepath.Base(fileURL)
+	flag.Parse()
+
+	fileURL := *fileURLFlag
+	chunkSize := *chunkSizeFlag
+	numWorkers := *numWorkersFlag
+	chunkPrefix := *chunkPrefixFlag
+	fileName := *fileNameFlag
 
 	chunker := chunker.NewChunker(chunkPrefix)
 
@@ -58,7 +68,7 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 			chunker,
 		)
 	} else {
-		log.Println("File size known. Downloading with chunk parallelism...")
+		log.Println("File size known. Downloading with range parallelism...")
 		d = downloader.NewParallelDownloader(
 			chunkSize,
 			numWorkers,

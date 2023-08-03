@@ -36,7 +36,6 @@ type chunk struct {
 
 func (d *ParallelDownloader) Download(url string) error {
 	var wg sync.WaitGroup
-	done := make(chan struct{}) // Channel to notify workers to stop
 
 	// Create channel to send chunk tasks to workers
 	chunkTasks := make(chan chunk)
@@ -46,16 +45,13 @@ func (d *ParallelDownloader) Download(url string) error {
 
 	// Launch worker goroutines
 	for i := 0; i < numWorkers; i++ {
-		go d.chunkDownloader(i, chunkTasks, url, &wg, done)
+		go d.chunkDownloader(i, chunkTasks, url, &wg)
 	}
 
 	// Generate chunk tasks
 	d.generateChunkTasks(d.FileSize, chunkTasks, d.ChunkSize)
 
 	wg.Wait()
-
-	// Notify workers to stop
-	close(done)
 
 	return nil
 }
@@ -65,40 +61,37 @@ func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<
 	chunkId := 0
 
 	for {
-		end := offset + int64(chunkSize)
+		end := offset + int64(chunkSize) - 1
 		if end >= fileSize {
 			end = fileSize
 		}
-		chunkTasks <- chunk{id: chunkId, start: offset, end: end}
+		c := chunk{id: chunkId, start: offset, end: end}
+		log.Printf("Generated chunk %v\n", c)
+		chunkTasks <- c
 		chunkId++
 		if end == fileSize {
 			break
 		}
 
-		offset = end
+		offset = end + 1
 	}
+
+	close(chunkTasks)
 
 	return chunkId
 }
 
-func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync.WaitGroup, done <-chan struct{}) {
+func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
 
-	for {
-		select {
-		case chunk, ok := <-chunkTasks:
-			if !ok {
-				return // No more tasks, worker can exit
-			}
-			d.downloadAndSave(workerId, chunk, url)
-		case <-done:
-			return // Exit worker goroutine when done channel is closed
-		}
+	for chunk := range chunkTasks {
+		d.downloadAndSave(workerId, chunk, url)
 	}
 }
 
 func (d *ParallelDownloader) downloadAndSave(workerId int, chunk chunk, url string) {
+	log.Printf("Worker %d downloading chunk %d\n", workerId, chunk.id)
 	resp, err := d.downloadChunk(url, chunk.start, chunk.end)
 	if err != nil {
 		log.Fatalf("Error downloading chunk at offset %d: %v\n", chunk.start, err)

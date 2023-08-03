@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
@@ -32,6 +33,7 @@ func (c *DefaultChunker) getChunkFilename(id int) string {
 }
 
 func (c *DefaultChunker) saveBytesToFile(filename string, bz []byte) error {
+	log.Printf("Saving chunk %s\n", filename)
 	out, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %w", filename, err)
@@ -47,6 +49,7 @@ func (c *DefaultChunker) saveBytesToFile(filename string, bz []byte) error {
 }
 
 func (c *DefaultChunker) AssembleChunks(filename string) error {
+	log.Printf("Assembling chunks into %s\n", filename)
 	out, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %w", filename, err)
@@ -55,6 +58,7 @@ func (c *DefaultChunker) AssembleChunks(filename string) error {
 
 	for i := 0; ; i++ {
 		chunkFilename := c.getChunkFilename(i)
+		log.Printf("Assembling chunk %s\n", chunkFilename)
 		if _, err := os.Stat(chunkFilename); os.IsNotExist(err) {
 			break
 		}
