@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 )
 
 var (
@@ -14,7 +15,6 @@ var (
 	chunkSizeFlag        = flag.Int("chunkSize", 1024*1024*10, "Size of each chunk in bytes")
 	numWorkersFlag       = flag.Int("numWorkers", 5, "Number of workers to use")
 	chunkPrefixFlag      = flag.String("chunkPrefix", "chunk-", "Prefix of the chunk files")
-	fileNameFlag         = flag.String("fileName", "sample_1280x720_surfing_with_audio.mp4", "Name of the file to download")
 	forceAlternativeFlag = flag.Bool("forceAlternative", false, "Force the alternative downloader to be used")
 )
 
@@ -25,9 +25,8 @@ func main() {
 	chunkSize := *chunkSizeFlag
 	numWorkers := *numWorkersFlag
 	chunkPrefix := *chunkPrefixFlag
-	fileName := *fileNameFlag
 	forceAlternative := *forceAlternativeFlag
-
+	fileName := path.Base(fileURL)
 	chunker := chunker.NewChunker(chunkPrefix)
 
 	if err := download(fileURL, chunkSize, numWorkers, chunker, forceAlternative); err != nil {
@@ -36,8 +35,7 @@ func main() {
 
 	log.Println("Download completed")
 
-	err := chunker.AssembleChunks(fileName)
-	if err != nil {
+	if err := chunker.AssembleChunks(fileName); err != nil {
 		log.Fatalf("Error assembling chunks: %v\n", err)
 	}
 }
@@ -64,7 +62,7 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 	var d downloader.Downloader
 	if fileSize == -1 || !supportsRange || forceAlternative {
 		log.Println("File size unknown. Downloading with alternative parallelism...")
-		d = downloader.NewAlternativeDownloader(
+		d = downloader.NewChunkDownloader(
 			chunkSize,
 			numWorkers,
 			chunker,

@@ -8,72 +8,79 @@ import (
 	"sync"
 )
 
-type AlternativeDownloader struct {
+type ChunkDownloader struct {
 	ChunkSize  int
 	NumWorkers int
 	Chunker    ChunkHandler
 }
 
-func NewAlternativeDownloader(chunkSize int, numWorkers int, chunker ChunkHandler) Downloader {
-	return &AlternativeDownloader{
+func NewChunkDownloader(chunkSize int, numWorkers int, chunker ChunkHandler) Downloader {
+	return &ChunkDownloader{
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,
 		Chunker:    chunker,
 	}
 }
 
-func (d *AlternativeDownloader) Download(url string) error {
+func (d *ChunkDownloader) Download(url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("error downloading file: %v", err)
 	}
 	defer resp.Body.Close()
 
-	sharedChunkId := 0
-	readerLock := sync.Mutex{}
-	numWorkers := d.NumWorkers
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error downloading file: %s", resp.Status)
+	}
+
 	chunkSize := d.ChunkSize
+	numWorkers := d.NumWorkers
+	chunkCh := make(chan []byte, numWorkers)
 
 	var wg sync.WaitGroup
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go d.processChunks(resp, &wg, &sharedChunkId, &readerLock, chunkSize)
+		go d.processChunks(chunkCh, &wg, chunkSize)
 	}
 
-	wg.Wait()
+	// Read and process the chunks
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		for {
+			chunk := make([]byte, chunkSize)
+			n, err := resp.Body.Read(chunk)
+			if err != nil {
+				if err == io.EOF {
+					// Send the last chunk to the worker goroutines
+					chunkCh <- chunk[:n]
+
+					break
+				}
+
+				log.Fatalf("error reading chunk: %v", err)
+			}
+
+			if n > 0 {
+				// Send the chunk to the worker goroutines
+				chunkCh <- chunk[:n]
+			}
+		}
+		close(chunkCh) // Signal the worker goroutines that there are no more chunks to process
+	}(&wg)
+
+	wg.Wait() // Wait for all worker goroutines to finish
 
 	return nil
 }
 
-func (d *AlternativeDownloader) processChunks(resp *http.Response, wg *sync.WaitGroup, sharedChunkId *int, readerLock *sync.Mutex, chunkSize int) {
+func (d *ChunkDownloader) processChunks(chunkCh <-chan []byte, wg *sync.WaitGroup, chunkSize int) {
 	defer wg.Done()
 
-	for {
-		readerLock.Lock()
-		chunk := make([]byte, chunkSize)
-		n, err := resp.Body.Read(chunk)
-		log.Printf("Read %d bytes, size %d\n", n, chunkSize)
-		chunkId := *sharedChunkId
-		*sharedChunkId++
-		readerLock.Unlock()
-
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			log.Fatalf("Error reading chunk %d: %v\n", chunkId, err)
-		}
-
-		if n == 0 {
-			return
-		}
-
-		if n < chunkSize {
-			chunk = chunk[:n]
-		}
-
-		err = d.Chunker.Handle(chunkId, chunk)
+	for bz := range chunkCh {
+		chunkId := d.Chunker.NextChunkID()
+		err := d.Chunker.Handle(chunkId, bz)
 		if err != nil {
 			log.Fatalf("Error saving chunk %d to file: %v\n", chunkId, err)
 		}

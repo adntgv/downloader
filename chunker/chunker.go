@@ -11,16 +11,24 @@ import (
 type Chunker interface {
 	Handle(id int, bz []byte) error
 	AssembleChunks(filename string) error
+	NextChunkID() int
 }
 
 type DefaultChunker struct {
 	ChunkPrefix string
+	NextID      int
 }
 
 func NewChunker(chunkPrefix string) Chunker {
 	return &DefaultChunker{
 		ChunkPrefix: chunkPrefix,
 	}
+}
+
+func (c *DefaultChunker) NextChunkID() int {
+	id := c.NextID
+	c.NextID++
+	return id
 }
 
 func (c *DefaultChunker) Handle(id int, bz []byte) error {
@@ -58,7 +66,6 @@ func (c *DefaultChunker) AssembleChunks(filename string) error {
 
 	for i := 0; ; i++ {
 		chunkFilename := c.getChunkFilename(i)
-		log.Printf("Assembling chunk %s\n", chunkFilename)
 		if _, err := os.Stat(chunkFilename); os.IsNotExist(err) {
 			break
 		}
