@@ -1,7 +1,6 @@
 package downloader
 
 import (
-	"chunker"
 	"fmt"
 	"io"
 	"log"
@@ -12,10 +11,10 @@ import (
 type AlternativeDownloader struct {
 	ChunkSize  int
 	NumWorkers int
-	Chunker    chunker.Chunker
+	Chunker    ChunkHandler
 }
 
-func NewAlternativeDownloader(chunkSize int, numWorkers int, chunker chunker.Chunker) Downloader {
+func NewAlternativeDownloader(chunkSize int, numWorkers int, chunker ChunkHandler) Downloader {
 	return &AlternativeDownloader{
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,

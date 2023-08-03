@@ -1,7 +1,6 @@
 package downloader
 
 import (
-	"chunker"
 	"fmt"
 	"io"
 	"log"
@@ -13,14 +12,14 @@ type ParallelDownloader struct {
 	ChunkSize  int
 	NumWorkers int
 	FileSize   int64
-	Chunker    chunker.Chunker
+	Chunker    ChunkHandler
 }
 
 func NewParallelDownloader(
 	chunkSize int,
 	numWorkers int,
 	fileSize int64,
-	chunker chunker.Chunker) Downloader {
+	chunker ChunkHandler) Downloader {
 	return &ParallelDownloader{
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,
