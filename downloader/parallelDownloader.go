@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"chunker"
 	"fmt"
 	"io"
 	"log"
@@ -12,14 +13,14 @@ type ParallelDownloader struct {
 	ChunkSize  int
 	NumWorkers int
 	FileSize   int64
-	Chunker    ChunkHandler
+	Chunker    chunker.Chunker
 }
 
 func NewParallelDownloader(
 	chunkSize int,
 	numWorkers int,
 	fileSize int64,
-	chunker ChunkHandler) Downloader {
+	chunker chunker.Chunker) Downloader {
 	return &ParallelDownloader{
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,
@@ -28,17 +29,11 @@ func NewParallelDownloader(
 	}
 }
 
-type chunk struct {
-	id    int
-	start int64
-	end   int64
-}
-
 func (d *ParallelDownloader) Download(url string) error {
 	var wg sync.WaitGroup
 
 	// Create channel to send chunk tasks to workers
-	chunkTasks := make(chan chunk)
+	chunkTasks := make(chan chunker.Chunk)
 
 	// Determine the number of worker goroutines (adjust as needed)
 	numWorkers := 5
@@ -56,7 +51,7 @@ func (d *ParallelDownloader) Download(url string) error {
 	return nil
 }
 
-func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<- chunk, chunkSize int) int {
+func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<- chunker.Chunk, chunkSize int) int {
 	offset := int64(0)
 	chunkId := 0
 
@@ -65,7 +60,7 @@ func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<
 		if end >= fileSize {
 			end = fileSize
 		}
-		c := chunk{id: chunkId, start: offset, end: end}
+		c := chunker.Chunk{ID: chunkId, Start: offset, End: end}
 		log.Printf("Generated chunk %v\n", c)
 		chunkTasks <- c
 		chunkId++
@@ -81,7 +76,7 @@ func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<
 	return chunkId
 }
 
-func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunk, url string, wg *sync.WaitGroup) {
+func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunker.Chunk, url string, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
 
@@ -90,22 +85,22 @@ func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chu
 	}
 }
 
-func (d *ParallelDownloader) downloadAndSave(workerId int, chunk chunk, url string) {
-	log.Printf("Worker %d downloading chunk %d\n", workerId, chunk.id)
-	resp, err := d.downloadChunk(url, chunk.start, chunk.end)
+func (d *ParallelDownloader) downloadAndSave(workerId int, chunk chunker.Chunk, url string) {
+	log.Printf("Worker %d downloading chunk %d\n", workerId, chunk.ID)
+	resp, err := d.downloadChunk(url, chunk.Start, chunk.End)
 	if err != nil {
-		log.Fatalf("Error downloading chunk at offset %d: %v\n", chunk.start, err)
+		log.Fatalf("Error downloading chunk at offset %d: %v\n", chunk.Start, err)
 	}
 	defer resp.Body.Close()
 
 	bz, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Error reading chunk %d: %v\n", chunk.id, err)
+		log.Fatalf("Error reading chunk %d: %v\n", chunk.ID, err)
 	}
 
-	err = d.Chunker.Handle(chunk.id, bz)
+	err = d.Chunker.Handle(chunk.ID, bz)
 	if err != nil {
-		log.Fatalf("Error saving chunk %d to file: %v\n", chunk.id, err)
+		log.Fatalf("Error saving chunk %d to file: %v\n", chunk.ID, err)
 	}
 }
 
