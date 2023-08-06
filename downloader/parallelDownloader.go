@@ -33,7 +33,7 @@ func (d *ParallelDownloader) Download(url string) error {
 	var wg sync.WaitGroup
 
 	// Create channel to send chunk tasks to workers
-	chunkTasks := make(chan chunker.Chunk)
+	chunkTasks := d.Chunker.GetChunkChannel()
 
 	// Determine the number of worker goroutines (adjust as needed)
 	numWorkers := 5

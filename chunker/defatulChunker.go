@@ -11,11 +11,14 @@ import (
 type DefaultChunker struct {
 	ChunkPrefix string
 	NextID      int
+	ChunkChan   chan Chunk
 }
 
 func NewChunker(chunkPrefix string) Chunker {
 	return &DefaultChunker{
 		ChunkPrefix: chunkPrefix,
+		NextID:      0,
+		ChunkChan:   make(chan Chunk),
 	}
 }
 
@@ -82,4 +85,8 @@ func (c *DefaultChunker) AssembleChunks(filename string) error {
 	}
 
 	return nil
+}
+
+func (c *DefaultChunker) GetChunkChannel() chan Chunk {
+	return c.ChunkChan
 }

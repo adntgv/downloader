@@ -10,4 +10,5 @@ type Chunker interface {
 	Handle(id int, bz []byte) error
 	AssembleChunks(filename string) error
 	NextChunkID() int
+	GetChunkChannel() chan Chunk
 }
