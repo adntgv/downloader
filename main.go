@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"sync"
 )
 
 var (
@@ -27,20 +28,21 @@ func main() {
 	chunkPrefix := *chunkPrefixFlag
 	forceAlternative := *forceAlternativeFlag
 	fileName := path.Base(fileURL)
-	chunker := chunker.NewChunker(chunkPrefix)
+	c := chunker.NewChunker(chunkPrefix, chunkSize)
+	wg := &sync.WaitGroup{}
 
-	if err := download(fileURL, chunkSize, numWorkers, chunker, forceAlternative); err != nil {
+	if err := download(fileURL, chunkSize, numWorkers, c, forceAlternative, wg); err != nil {
 		log.Fatalf("Error downloading file: %v\n", err)
 	}
 
 	log.Println("Download completed")
 
-	if err := chunker.AssembleChunks(fileName); err != nil {
+	if err := c.AssembleChunks(fileName); err != nil {
 		log.Fatalf("Error assembling chunks: %v\n", err)
 	}
 }
 
-func download(fileURL string, chunkSize int, numWorkers int, chunker chunker.Chunker, forceAlternative bool) error {
+func download(fileURL string, chunkSize int, numWorkers int, c chunker.Chunker, forceAlternative bool, wg *sync.WaitGroup) error {
 	url := fileURL
 
 	log.Printf("Downloading file from: %s\n", url)
@@ -52,13 +54,23 @@ func download(fileURL string, chunkSize int, numWorkers int, chunker chunker.Chu
 	defer resp.Body.Close()
 
 	supportsRange := resp.Header.Get("Accept-Ranges") == "bytes"
+	fileSize := resp.ContentLength
 
-	downloader := newDownloader(chunkSize, numWorkers, resp.ContentLength, supportsRange, chunker, forceAlternative)
+	// Generate chunk tasks
+	wg.Add(1)
+	go func(c chunker.Chunker, wg *sync.WaitGroup, fileSize int64, chunkSize int) {
+		defer wg.Done()
+		c.GenerateChunkTasks(fileSize)
+
+		close(c.GetChunkChannel())
+	}(c, wg, fileSize, chunkSize)
+
+	downloader := newDownloader(chunkSize, numWorkers, resp.ContentLength, supportsRange, c, forceAlternative, wg)
 
 	return downloader.Download(url)
 }
 
-func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool, chunker chunker.Chunker, forceAlternative bool) downloader.Downloader {
+func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange bool, chunker chunker.Chunker, forceAlternative bool, wg *sync.WaitGroup) downloader.Downloader {
 	var d downloader.Downloader
 	if fileSize == -1 || !supportsRange || forceAlternative {
 		log.Println("File size unknown. Downloading with alternative parallelism...")
@@ -74,6 +86,7 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 			numWorkers,
 			fileSize,
 			chunker,
+			wg,
 		)
 	}
 

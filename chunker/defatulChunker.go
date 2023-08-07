@@ -12,13 +12,15 @@ type DefaultChunker struct {
 	ChunkPrefix string
 	NextID      int
 	ChunkChan   chan Chunk
+	ChunkSize   int
 }
 
-func NewChunker(chunkPrefix string) Chunker {
+func NewChunker(chunkPrefix string, chunkSize int) Chunker {
 	return &DefaultChunker{
 		ChunkPrefix: chunkPrefix,
 		NextID:      0,
 		ChunkChan:   make(chan Chunk),
+		ChunkSize:   chunkSize,
 	}
 }
 
@@ -89,4 +91,29 @@ func (c *DefaultChunker) AssembleChunks(filename string) error {
 
 func (c *DefaultChunker) GetChunkChannel() chan Chunk {
 	return c.ChunkChan
+}
+
+func (d *DefaultChunker) GenerateChunkTasks(fileSize int64) int {
+	offset := int64(0)
+	chunkId := 0
+
+	chunkChan := d.GetChunkChannel()
+
+	for {
+		end := offset + int64(d.ChunkSize) - 1
+		if end >= fileSize {
+			end = fileSize
+		}
+		c := Chunk{ID: chunkId, Start: offset, End: end}
+		log.Printf("Generated chunk %v\n", c)
+		chunkChan <- c
+		chunkId++
+		if end == fileSize {
+			break
+		}
+
+		offset = end + 1
+	}
+
+	return chunkId
 }

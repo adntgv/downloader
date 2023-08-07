@@ -14,24 +14,26 @@ type ParallelDownloader struct {
 	NumWorkers int
 	FileSize   int64
 	Chunker    chunker.Chunker
+	wg         *sync.WaitGroup
 }
 
 func NewParallelDownloader(
 	chunkSize int,
 	numWorkers int,
 	fileSize int64,
-	chunker chunker.Chunker) Downloader {
+	chunker chunker.Chunker,
+	wg *sync.WaitGroup,
+) Downloader {
 	return &ParallelDownloader{
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,
 		FileSize:   fileSize,
 		Chunker:    chunker,
+		wg:         wg,
 	}
 }
 
 func (d *ParallelDownloader) Download(url string) error {
-	var wg sync.WaitGroup
-
 	// Create channel to send chunk tasks to workers
 	chunkTasks := d.Chunker.GetChunkChannel()
 
@@ -40,40 +42,12 @@ func (d *ParallelDownloader) Download(url string) error {
 
 	// Launch worker goroutines
 	for i := 0; i < numWorkers; i++ {
-		go d.chunkDownloader(i, chunkTasks, url, &wg)
+		go d.chunkDownloader(i, chunkTasks, url, d.wg)
 	}
 
-	// Generate chunk tasks
-	d.generateChunkTasks(d.FileSize, chunkTasks, d.ChunkSize)
-
-	wg.Wait()
+	d.wg.Wait()
 
 	return nil
-}
-
-func (d *ParallelDownloader) generateChunkTasks(fileSize int64, chunkTasks chan<- chunker.Chunk, chunkSize int) int {
-	offset := int64(0)
-	chunkId := 0
-
-	for {
-		end := offset + int64(chunkSize) - 1
-		if end >= fileSize {
-			end = fileSize
-		}
-		c := chunker.Chunk{ID: chunkId, Start: offset, End: end}
-		log.Printf("Generated chunk %v\n", c)
-		chunkTasks <- c
-		chunkId++
-		if end == fileSize {
-			break
-		}
-
-		offset = end + 1
-	}
-
-	close(chunkTasks)
-
-	return chunkId
 }
 
 func (d *ParallelDownloader) chunkDownloader(workerId int, chunkTasks <-chan chunker.Chunk, url string, wg *sync.WaitGroup) {

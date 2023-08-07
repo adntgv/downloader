@@ -11,4 +11,5 @@ type Chunker interface {
 	AssembleChunks(filename string) error
 	NextChunkID() int
 	GetChunkChannel() chan Chunk
+	GenerateChunkTasks(fileSize int64) int
 }
