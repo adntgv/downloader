@@ -37,15 +37,10 @@ func (d *ParallelDownloader) Download(url string) error {
 	// Create channel to send chunk tasks to workers
 	chunkTasks := d.Chunker.GetChunkChannel()
 
-	// Determine the number of worker goroutines (adjust as needed)
-	numWorkers := 5
-
 	// Launch worker goroutines
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < d.NumWorkers; i++ {
 		go d.chunkDownloader(i, chunkTasks, url, d.wg)
 	}
-
-	d.wg.Wait()
 
 	return nil
 }

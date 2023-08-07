@@ -35,6 +35,8 @@ func main() {
 		log.Fatalf("Error downloading file: %v\n", err)
 	}
 
+	wg.Wait()
+
 	log.Println("Download completed")
 
 	if err := c.AssembleChunks(fileName); err != nil {
@@ -58,12 +60,12 @@ func download(fileURL string, chunkSize int, numWorkers int, c chunker.Chunker, 
 
 	// Generate chunk tasks
 	wg.Add(1)
-	go func(c chunker.Chunker, wg *sync.WaitGroup, fileSize int64, chunkSize int) {
+	go func(c chunker.Chunker, wg *sync.WaitGroup, fileSize int64) {
 		defer wg.Done()
 		c.GenerateChunkTasks(fileSize)
 
 		close(c.GetChunkChannel())
-	}(c, wg, fileSize, chunkSize)
+	}(c, wg, fileSize)
 
 	downloader := newDownloader(chunkSize, numWorkers, resp.ContentLength, supportsRange, c, forceAlternative, wg)
 

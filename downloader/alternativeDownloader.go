@@ -42,7 +42,7 @@ func (d *ChunkDownloader) Download(url string) error {
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go d.processChunks(chunkCh, &wg, chunkSize)
+		go d.processChunks(chunkCh, &wg)
 	}
 
 	// Read and process the chunks
@@ -71,12 +71,10 @@ func (d *ChunkDownloader) Download(url string) error {
 		close(chunkCh) // Signal the worker goroutines that there are no more chunks to process
 	}(&wg)
 
-	wg.Wait() // Wait for all worker goroutines to finish
-
 	return nil
 }
 
-func (d *ChunkDownloader) processChunks(chunkCh <-chan []byte, wg *sync.WaitGroup, chunkSize int) {
+func (d *ChunkDownloader) processChunks(chunkCh <-chan []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for bz := range chunkCh {
