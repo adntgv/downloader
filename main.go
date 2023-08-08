@@ -70,19 +70,24 @@ func download(urls []string, chunkSize int, numWorkers int, c chunker.Chunker, f
 	downloader := newDownloader(chunkSize, numWorkers, fileSize, supportsRange, c, forceAlternative, wg)
 
 	// Generate chunk tasks
-	wg.Add(1)
-	go func(c chunker.Chunker, wg *sync.WaitGroup, fileSize int64) {
-		defer wg.Done()
-		c.GenerateChunkTasks(fileSize)
+	if fileSize > 0 && supportsRange && !forceAlternative {
+		wg.Add(1)
+		go func(c chunker.Chunker, wg *sync.WaitGroup, fileSize int64) {
+			defer wg.Done()
+			c.GenerateChunkTasks(fileSize)
 
-		close(c.GetChunkChannel())
-	}(c, wg, fileSize)
+			close(c.GetChunkChannel())
+		}(c, wg, fileSize)
+	}
 
 	for _, url := range urls {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
-			downloader.Download(url)
+			err := downloader.Download(url)
+			if err != nil {
+				log.Fatalf("Error downloading file: %v\n", err)
+			}
 		}(url)
 	}
 

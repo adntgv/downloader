@@ -13,6 +13,7 @@ type ChunkDownloader struct {
 	ChunkSize  int
 	NumWorkers int
 	Chunker    chunker.Chunker
+	done       chan struct{}
 }
 
 func NewChunkDownloader(chunkSize int, numWorkers int, chunker chunker.Chunker) Downloader {
@@ -20,7 +21,13 @@ func NewChunkDownloader(chunkSize int, numWorkers int, chunker chunker.Chunker) 
 		ChunkSize:  chunkSize,
 		NumWorkers: numWorkers,
 		Chunker:    chunker,
+		done:       make(chan struct{}),
 	}
+}
+
+type IdBytes struct {
+	Id    int
+	Bytes []byte
 }
 
 func (d *ChunkDownloader) Download(url string) error {
@@ -36,7 +43,7 @@ func (d *ChunkDownloader) Download(url string) error {
 
 	chunkSize := d.ChunkSize
 	numWorkers := d.NumWorkers
-	chunkCh := make(chan []byte, numWorkers)
+	chunkCh := make(chan IdBytes, numWorkers)
 
 	var wg sync.WaitGroup
 
@@ -45,43 +52,40 @@ func (d *ChunkDownloader) Download(url string) error {
 		go d.processChunks(chunkCh, &wg)
 	}
 
-	// Read and process the chunks
-	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		for {
-			chunk := make([]byte, chunkSize)
-			n, err := resp.Body.Read(chunk)
-			if err != nil {
-				if err == io.EOF {
-					// Send the last chunk to the worker goroutines
-					chunkCh <- chunk[:n]
+	chunkId := 0
 
-					break
-				}
+	for {
+		chunk := make([]byte, chunkSize)
+		n, err := resp.Body.Read(chunk)
+		if err != nil {
+			if err == io.EOF {
+				// Send the last chunk to the worker goroutines
+				chunkCh <- IdBytes{Id: chunkId, Bytes: chunk[:n]}
 
-				log.Fatalf("error reading chunk: %v", err)
+				break
 			}
 
-			if n > 0 {
-				// Send the chunk to the worker goroutines
-				chunkCh <- chunk[:n]
-			}
+			log.Fatalf("error reading chunk: %v", err)
 		}
-		close(chunkCh) // Signal the worker goroutines that there are no more chunks to process
-	}(&wg)
 
+		if n > 0 {
+			// Send the chunk to the worker goroutines
+			chunkCh <- IdBytes{Id: chunkId, Bytes: chunk[:n]}
+		}
+		chunkId++
+	}
+
+	close(chunkCh) // Signal the worker goroutines that there are no more chunks to process
+	wg.Wait()
 	return nil
 }
 
-func (d *ChunkDownloader) processChunks(chunkCh <-chan []byte, wg *sync.WaitGroup) {
+func (d *ChunkDownloader) processChunks(chunkCh <-chan IdBytes, wg *sync.WaitGroup) {
 	defer wg.Done()
-
 	for bz := range chunkCh {
-		chunkId := d.Chunker.NextChunkID()
-		err := d.Chunker.Handle(chunkId, bz)
+		err := d.Chunker.Handle(bz.Id, bz.Bytes)
 		if err != nil {
-			log.Fatalf("Error saving chunk %d to file: %v\n", chunkId, err)
+			log.Fatalf("Error saving chunk %d to file: %v\n", bz.Id, err)
 		}
 	}
 }

@@ -6,13 +6,17 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 )
+
+const TMP_DIR = "/tmp/"
 
 type DefaultChunker struct {
 	ChunkPrefix string
 	NextID      int
 	ChunkChan   chan Chunk
 	ChunkSize   int
+	ChunkIDLock *sync.Mutex
 }
 
 func NewChunker(chunkPrefix string, chunkSize int) Chunker {
@@ -21,12 +25,15 @@ func NewChunker(chunkPrefix string, chunkSize int) Chunker {
 		NextID:      0,
 		ChunkChan:   make(chan Chunk),
 		ChunkSize:   chunkSize,
+		ChunkIDLock: &sync.Mutex{},
 	}
 }
 
 func (c *DefaultChunker) NextChunkID() int {
+	c.ChunkIDLock.Lock()
 	id := c.NextID
 	c.NextID++
+	c.ChunkIDLock.Unlock()
 	return id
 }
 
@@ -36,11 +43,16 @@ func (c *DefaultChunker) Handle(id int, bz []byte) error {
 }
 
 func (c *DefaultChunker) getChunkFilename(id int) string {
-	return fmt.Sprintf("%s%d", c.ChunkPrefix, id)
+	return fmt.Sprintf("%s%s%d", TMP_DIR, c.ChunkPrefix, id)
 }
 
 func (c *DefaultChunker) saveBytesToFile(filename string, bz []byte) error {
 	log.Printf("Saving chunk %s\n", filename)
+	if _, err := os.Stat(filename); err == nil {
+		// File exists
+		return nil
+	}
+
 	out, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %w", filename, err)
