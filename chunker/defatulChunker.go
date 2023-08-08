@@ -47,7 +47,6 @@ func (c *DefaultChunker) getChunkFilename(id int) string {
 }
 
 func (c *DefaultChunker) saveBytesToFile(filename string, bz []byte) error {
-	log.Printf("Saving chunk %s\n", filename)
 	if _, err := os.Stat(filename); err == nil {
 		// File exists
 		return nil

@@ -18,7 +18,7 @@ var (
 	numWorkersFlag       = flag.Int("numWorkers", 5, "Number of workers to use")
 	chunkPrefixFlag      = flag.String("chunkPrefix", "chunk-", "Prefix of the chunk files")
 	forceAlternativeFlag = flag.Bool("forceAlternative", false, "Force the alternative downloader to be used")
-	urlsFileFlag         = flag.String("urlsFile", "urls.txt", "File containing the urls to download")
+	urlsFileFlag         = flag.String("urlsFile", "", "File containing the urls to download")
 )
 
 func main() {
@@ -55,8 +55,6 @@ func main() {
 func download(urls []string, chunkSize int, numWorkers int, c chunker.Chunker, forceAlternative bool, wg *sync.WaitGroup) (string, error) {
 	url := urls[0]
 	fileName := path.Base(url)
-
-	log.Printf("Downloading file from: %s\n", url)
 
 	resp, err := http.Head(url)
 	if err != nil {
@@ -118,6 +116,10 @@ func newDownloader(chunkSize int, numWorkers int, fileSize int64, supportsRange 
 }
 
 func readURLs(urlsFile string) ([]string, error) {
+	if urlsFile == "" {
+		return nil, fmt.Errorf("no urls file specified")
+	}
+
 	urls := []string{}
 
 	file, err := os.Open(urlsFile)
